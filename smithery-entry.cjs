@@ -155,7 +155,20 @@ const runRepomixCli = async (args, cwd, options = {}) => {
     // Add the target directory/path
     cliArgs.push(...args);
 
-    const child = spawn(path.join(__dirname, "node_modules", ".bin", "repomix"), cliArgs, {
+    // Try to find repomix binary, fallback to npx if not found
+    let repomixPath = "/app/node_modules/.bin/repomix";
+    let command = repomixPath;
+    let args = cliArgs;
+
+    try {
+      await fs.access(repomixPath);
+    } catch {
+      // Fallback to npx if local binary not found
+      command = "npx";
+      args = ["repomix@0.3.5", ...cliArgs];
+    }
+
+    const child = spawn(command, args, {
       cwd,
       stdio: ["inherit", "pipe", "pipe"],
       env: {
