@@ -1,0 +1,70 @@
+# Source files
+src/
+
+# Test files
+tests/
+coverage/
+
+# Configuration files
+tsconfig.json
+tsconfig.build.json
+.eslintrc.js
+eslint.config.mjs
+prettier.config.mjs
+vite.config.ts
+biome.json
+
+# Git files
+.gitignore
+.git
+
+# CI files
+.github/
+
+# yarn files
+.yarn
+
+# ESLint files
+.eslintcache
+
+# Config files
+.editorconfig
+.node-version
+.tool-versions
+repomix.config.js
+
+# Editor files
+.vscode/
+.idea/
+.memo/
+
+# Logs
+*.log
+
+# Repomix output
+repomix-output.txt
+
+# Development scripts
+scripts/
+
+# Documentation files (except README and LICENSE)
+docs/
+CONTRIBUTING.md
+CHANGELOG.md
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# biome
+.biome/
+
+# Website
+website/
+
+# Devcontainer
+.devcontainer/

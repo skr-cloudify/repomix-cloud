@@ -1,0 +1,20 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "lucide-vue-next": "^0.474.0",
+    "vite-plugin-pwa": "^1.0.0",
+    "vue3-ace-editor": "^2.2.4"
+  },
+  "devDependencies": {
+    "@types/gtag.js": "^0.0.20",
+    "rollup-plugin-visualizer": "^5.14.0",
+    "vitepress": "^1.6.3"
+  }
+}

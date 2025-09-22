@@ -1,0 +1,35 @@
+# Run website in development mode
+# $ docker compose -f website/compose.yml up --build
+
+services:
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/app
+    environment:
+      - NODE_ENV=development
+    # override default command
+    command: sh -c "npm i && npm run docs:dev -- --port 5173 --host"
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./server:/app
+    environment:
+      - NODE_ENV=development
+      - PORT=8080
+    # override default command
+    command: sh -c "npm i && npm run dev"
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./server
+          target: /app
