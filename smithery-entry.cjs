@@ -578,13 +578,8 @@ module.exports = function ({ config = {} }) {
 };
 
 // Export config schema for Smithery
-module.exports.configSchema = {
-  type: "object",
-  properties: {
-    githubToken: {
-      type: "string",
-      description:
-        "GitHub personal access token for private repository access and higher rate limits",
-    },
-  },
-};
+module.exports.configSchema = z.object({
+  githubToken: z.string().optional().describe(
+    "GitHub personal access token for private repository access and higher rate limits"
+  ),
+});
