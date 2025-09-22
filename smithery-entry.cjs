@@ -158,17 +158,17 @@ const runRepomixCli = async (args, cwd, options = {}) => {
     // Try to find repomix binary, fallback to npx if not found
     let repomixPath = "/app/node_modules/.bin/repomix";
     let command = repomixPath;
-    let args = cliArgs;
+    let commandArgs = cliArgs;
 
     try {
       require("fs").accessSync(repomixPath);
     } catch {
       // Fallback to npx if local binary not found
       command = "npx";
-      args = ["repomix@0.3.5", ...cliArgs];
+      commandArgs = ["repomix@0.3.5", ...cliArgs];
     }
 
-    const child = spawn(command, args, {
+    const child = spawn(command, commandArgs, {
       cwd,
       stdio: ["inherit", "pipe", "pipe"],
       env: {
@@ -285,7 +285,9 @@ module.exports = function ({ config = {} }) {
         try {
           // Check if GitHub token is available for private repos
           if (!process.env.GITHUB_TOKEN) {
-            console.log("Note: No GitHub token configured. Public repositories will work, but private repositories will fail. Configure githubToken in Smithery settings for private repo access.");
+            console.log(
+              "Note: No GitHub token configured. Public repositories will work, but private repositories will fail. Configure githubToken in Smithery settings for private repo access."
+            );
           }
 
           tempDir = await createToolWorkspace();
@@ -597,7 +599,10 @@ module.exports = function ({ config = {} }) {
 
 // Export config schema for Smithery
 module.exports.configSchema = z.object({
-  githubToken: z.string().optional().describe(
-    "GitHub personal access token for private repository access and higher rate limits"
-  ),
+  githubToken: z
+    .string()
+    .optional()
+    .describe(
+      "GitHub personal access token for private repository access and higher rate limits"
+    ),
 });
