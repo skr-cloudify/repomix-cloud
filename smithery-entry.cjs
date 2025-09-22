@@ -161,7 +161,7 @@ const runRepomixCli = async (args, cwd, options = {}) => {
     let args = cliArgs;
 
     try {
-      await fs.access(repomixPath);
+      require("fs").accessSync(repomixPath);
     } catch {
       // Fallback to npx if local binary not found
       command = "npx";
