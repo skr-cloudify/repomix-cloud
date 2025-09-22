@@ -160,13 +160,33 @@ const runRepomixCli = async (args, cwd, options = {}) => {
     let command = repomixPath;
     let commandArgs = cliArgs;
 
-    try {
-      require("fs").accessSync(repomixPath);
-    } catch {
-      // Fallback to npx if local binary not found
-      command = "npx";
-      commandArgs = ["repomix@0.3.5", ...cliArgs];
+    // Check if we're running locally or in Docker
+    const isLocal = !require("fs").existsSync("/app");
+    
+    if (isLocal) {
+      // Running locally - use local node_modules or npx
+      const localRepomixPath = path.join(__dirname, "node_modules", ".bin", "repomix");
+      try {
+        require("fs").accessSync(localRepomixPath);
+        command = localRepomixPath;
+        commandArgs = cliArgs;
+      } catch {
+        // Use npx with latest version for local development
+        command = "npx";
+        commandArgs = ["repomix", ...cliArgs];
+      }
+    } else {
+      // Running in Docker
+      try {
+        require("fs").accessSync(repomixPath);
+      } catch {
+        // Fallback to npx if local binary not found
+        command = "npx";
+        commandArgs = ["repomix@0.3.5", ...cliArgs];
+      }
     }
+
+    console.log(`Executing repomix command: ${command}`, commandArgs);
 
     const child = spawn(command, commandArgs, {
       cwd,
@@ -182,14 +202,19 @@ const runRepomixCli = async (args, cwd, options = {}) => {
     let stderr = "";
 
     child.stdout.on("data", (data) => {
-      stdout += data.toString();
+      const output = data.toString();
+      stdout += output;
+      console.log(`[repomix stdout]: ${output.trim()}`);
     });
 
     child.stderr.on("data", (data) => {
-      stderr += data.toString();
+      const output = data.toString();
+      stderr += output;
+      console.log(`[repomix stderr]: ${output.trim()}`);
     });
 
     child.on("close", (code) => {
+      console.log(`Repomix process exited with code: ${code}`);
       if (code === 0) {
         // Parse the output to extract metrics if possible
         const metrics = {
@@ -229,6 +254,7 @@ const runRepomixCli = async (args, cwd, options = {}) => {
     });
 
     child.on("error", (error) => {
+      console.error(`Repomix process error:`, error);
       reject(error);
     });
   });
