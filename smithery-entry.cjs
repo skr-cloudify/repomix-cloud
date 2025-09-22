@@ -162,10 +162,15 @@ const runRepomixCli = async (args, cwd, options = {}) => {
 
     // Check if we're running locally or in Docker
     const isLocal = !require("fs").existsSync("/app");
-    
+
     if (isLocal) {
       // Running locally - use local node_modules or npx
-      const localRepomixPath = path.join(__dirname, "node_modules", ".bin", "repomix");
+      const localRepomixPath = path.join(
+        __dirname,
+        "node_modules",
+        ".bin",
+        "repomix"
+      );
       try {
         require("fs").accessSync(localRepomixPath);
         command = localRepomixPath;
@@ -239,12 +244,25 @@ const runRepomixCli = async (args, cwd, options = {}) => {
 
         // Provide more helpful error messages
         let userFriendlyError = `Repomix CLI failed with code ${code}`;
-        let debugInfo = `Command: ${command} ${commandArgs.join(' ')}\nCWD: ${cwd}\nGITHUB_TOKEN: ${process.env.GITHUB_TOKEN ? 'SET' : 'NOT SET'}`;
-        
-        if (stderr.includes("Repository not found") || stderr.includes("does not exist")) {
-          userFriendlyError += ": Repository not found. Please check the repository URL and ensure it exists.";
-        } else if (stderr.includes("Authentication failed") || stderr.includes("403") || stderr.includes("401")) {
-          userFriendlyError += ": Authentication failed. This repository may be private - configure a GitHub token in Smithery settings.";
+        let debugInfo = `Command: ${command} ${commandArgs.join(
+          " "
+        )}\nCWD: ${cwd}\nGITHUB_TOKEN: ${
+          process.env.GITHUB_TOKEN ? "SET" : "NOT SET"
+        }`;
+
+        if (
+          stderr.includes("Repository not found") ||
+          stderr.includes("does not exist")
+        ) {
+          userFriendlyError +=
+            ": Repository not found. Please check the repository URL and ensure it exists.";
+        } else if (
+          stderr.includes("Authentication failed") ||
+          stderr.includes("403") ||
+          stderr.includes("401")
+        ) {
+          userFriendlyError +=
+            ": Authentication failed. This repository may be private - configure a GitHub token in Smithery settings.";
         } else if (stderr.includes("Network") || stderr.includes("timeout")) {
           userFriendlyError += ": Network error. Please try again.";
         } else if (errorMsg) {
@@ -339,9 +357,15 @@ module.exports = function ({ config = {} }) {
             console.log(
               "Note: No GitHub token configured. Public repositories will work, but private repositories will fail. Configure githubToken in Smithery settings for private repo access."
             );
-            return formatToolError(new Error("GitHub token not configured. This repository appears to be private and requires authentication. Please configure 'githubToken' in your Smithery server settings."));
+            return formatToolError(
+              new Error(
+                "GitHub token not configured. This repository appears to be private and requires authentication. Please configure 'githubToken' in your Smithery server settings."
+              )
+            );
           } else {
-            console.log("GitHub token is configured for private repository access.");
+            console.log(
+              "GitHub token is configured for private repository access."
+            );
           }
 
           // Validate repository format
@@ -370,7 +394,7 @@ module.exports = function ({ config = {} }) {
             quiet: true,
           };
 
-          const result = await runRepomixCli(["."], tempDir, cliOptions);
+          const result = await runRepomixCli([], tempDir, cliOptions);
           if (!result) {
             return {
               isError: true,
