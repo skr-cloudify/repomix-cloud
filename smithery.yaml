@@ -1,2 +1,3 @@
 # Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
-runtime: "typescript"
+runtime: "docker"
+dockerfile: "Dockerfile.mcp"
