@@ -484,7 +484,6 @@ module.exports = function ({ config = {} }) {
             style: "xml",
             securityCheck: true,
             topFilesLen: topFilesLength,
-            quiet: true,
           };
 
           const result = await runRepomixCli(
