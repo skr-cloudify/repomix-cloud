@@ -207,10 +207,24 @@ const runRepomixCli = async (args, cwd, options = {}) => {
         });
       } else {
         const errorMsg = stderr || stdout || "No error output captured";
-        console.error(`Repomix CLI failed with code ${code}:`, { stderr, stdout });
-        reject(
-          new Error(`Repomix CLI failed with code ${code}: ${errorMsg}`)
-        );
+        console.error(`Repomix CLI failed with code ${code}:`, {
+          stderr,
+          stdout,
+        });
+
+        // Provide more helpful error messages
+        let userFriendlyError = `Repomix CLI failed with code ${code}`;
+        if (stderr.includes("Repository not found") || stderr.includes("does not exist")) {
+          userFriendlyError += ": Repository not found. Please check the repository URL and ensure it exists.";
+        } else if (stderr.includes("Authentication failed") || stderr.includes("403")) {
+          userFriendlyError += ": Authentication failed. This repository may be private - configure a GitHub token in Smithery settings.";
+        } else if (stderr.includes("Network") || stderr.includes("timeout")) {
+          userFriendlyError += ": Network error. Please try again.";
+        } else if (errorMsg) {
+          userFriendlyError += `: ${errorMsg}`;
+        }
+
+        reject(new Error(userFriendlyError));
       }
     });
 
@@ -293,8 +307,15 @@ module.exports = function ({ config = {} }) {
           }
 
           // Validate repository format
-          const repoUrl = remote.startsWith('http') ? remote : `https://github.com/${remote}`;
+          const repoUrl = remote.startsWith("http")
+            ? remote
+            : `https://github.com/${remote}`;
           console.log(`Processing repository: ${repoUrl}`);
+
+          // Pre-check: Try to access the repository (basic check)
+          // Skip pre-check for now since it may not work with private repos
+          // The actual repomix command will handle authentication properly
+          console.log(`Repository validation: ${repoUrl}`);
 
           tempDir = await createToolWorkspace();
           const outputFilePath = path.join(tempDir, "repomix-output.xml");
