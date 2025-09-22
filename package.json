@@ -11,7 +11,6 @@
   "scripts": {
     "build": "tsc && node -e \"require('fs').chmodSync('lib/src/index.js', '755')\"",
     "smithery-build": "npx @smithery/cli build",
-    "prepare": "npm run build",
     "start": "node lib/src/index.js"
   },
   "dependencies": {
