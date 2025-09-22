@@ -239,15 +239,24 @@ const runRepomixCli = async (args, cwd, options = {}) => {
 
         // Provide more helpful error messages
         let userFriendlyError = `Repomix CLI failed with code ${code}`;
+        let debugInfo = `Command: ${command} ${commandArgs.join(' ')}\nCWD: ${cwd}\nGITHUB_TOKEN: ${process.env.GITHUB_TOKEN ? 'SET' : 'NOT SET'}`;
+        
         if (stderr.includes("Repository not found") || stderr.includes("does not exist")) {
           userFriendlyError += ": Repository not found. Please check the repository URL and ensure it exists.";
-        } else if (stderr.includes("Authentication failed") || stderr.includes("403")) {
+        } else if (stderr.includes("Authentication failed") || stderr.includes("403") || stderr.includes("401")) {
           userFriendlyError += ": Authentication failed. This repository may be private - configure a GitHub token in Smithery settings.";
         } else if (stderr.includes("Network") || stderr.includes("timeout")) {
           userFriendlyError += ": Network error. Please try again.";
         } else if (errorMsg) {
           userFriendlyError += `: ${errorMsg}`;
+        } else {
+          userFriendlyError += `: No error details available`;
         }
+
+        // Add debug information
+        userFriendlyError += `\n\nDebug Info:\n${debugInfo}`;
+        if (stdout) userFriendlyError += `\nSTDOUT: ${stdout}`;
+        if (stderr) userFriendlyError += `\nSTDERR: ${stderr}`;
 
         reject(new Error(userFriendlyError));
       }
@@ -330,6 +339,9 @@ module.exports = function ({ config = {} }) {
             console.log(
               "Note: No GitHub token configured. Public repositories will work, but private repositories will fail. Configure githubToken in Smithery settings for private repo access."
             );
+            return formatToolError(new Error("GitHub token not configured. This repository appears to be private and requires authentication. Please configure 'githubToken' in your Smithery server settings."));
+          } else {
+            console.log("GitHub token is configured for private repository access.");
           }
 
           // Validate repository format
