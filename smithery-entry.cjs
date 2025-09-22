@@ -150,7 +150,8 @@ const runRepomixCli = async (args, cwd, options = {}) => {
     // Security checks are enabled by default, so no flag needed when true
     if (options.topFilesLen)
       cliArgs.push("--top-files-len", options.topFilesLen.toString());
-    if (options.quiet) cliArgs.push("--quiet");
+    // Remove --quiet flag to get proper error output
+    // if (options.quiet) cliArgs.push("--quiet");
 
     // Add the target directory/path
     cliArgs.push(...args);
@@ -195,7 +196,7 @@ const runRepomixCli = async (args, cwd, options = {}) => {
 
     const child = spawn(command, commandArgs, {
       cwd,
-      stdio: ["inherit", "pipe", "pipe"],
+      stdio: ["ignore", "pipe", "pipe"], // Change from "inherit" to "ignore" for stdin
       env: {
         ...process.env,
         // Ensure GitHub token is passed through
@@ -391,7 +392,8 @@ module.exports = function ({ config = {} }) {
             style: "xml",
             securityCheck: true,
             topFilesLen: topFilesLength,
-            quiet: true,
+            // Remove quiet to get error output
+            // quiet: true,
           };
 
           const result = await runRepomixCli([], tempDir, cliOptions);
