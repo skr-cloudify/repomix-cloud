@@ -206,8 +206,10 @@ const runRepomixCli = async (args, cwd, options = {}) => {
           stderr,
         });
       } else {
+        const errorMsg = stderr || stdout || "No error output captured";
+        console.error(`Repomix CLI failed with code ${code}:`, { stderr, stdout });
         reject(
-          new Error(`Repomix CLI failed with code ${code}: ${stderr || stdout}`)
+          new Error(`Repomix CLI failed with code ${code}: ${errorMsg}`)
         );
       }
     });
@@ -289,6 +291,10 @@ module.exports = function ({ config = {} }) {
               "Note: No GitHub token configured. Public repositories will work, but private repositories will fail. Configure githubToken in Smithery settings for private repo access."
             );
           }
+
+          // Validate repository format
+          const repoUrl = remote.startsWith('http') ? remote : `https://github.com/${remote}`;
+          console.log(`Processing repository: ${repoUrl}`);
 
           tempDir = await createToolWorkspace();
           const outputFilePath = path.join(tempDir, "repomix-output.xml");
