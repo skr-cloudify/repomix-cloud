@@ -155,7 +155,7 @@ const runRepomixCli = async (args, cwd, options = {}) => {
     // Add the target directory/path
     cliArgs.push(...args);
 
-    const child = spawn("npx", ["repomix", ...cliArgs], {
+    const child = spawn(path.join(__dirname, "node_modules", ".bin", "repomix"), cliArgs, {
       cwd,
       stdio: ["inherit", "pipe", "pipe"],
       env: {
@@ -270,6 +270,11 @@ module.exports = function ({ config = {} }) {
         let tempDir = "";
 
         try {
+          // Check if GitHub token is available for private repos
+          if (!process.env.GITHUB_TOKEN) {
+            console.log("Note: No GitHub token configured. Public repositories will work, but private repositories will fail. Configure githubToken in Smithery settings for private repo access.");
+          }
+
           tempDir = await createToolWorkspace();
           const outputFilePath = path.join(tempDir, "repomix-output.xml");
 
