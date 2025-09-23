@@ -1,1 +1,5 @@
 runtime: "typescript"
+node_version: "20"
+entry: "src/smithery-entry.ts"
+build_command: "npm run build"
+start_command: "node .smithery/index.cjs"
