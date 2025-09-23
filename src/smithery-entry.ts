@@ -26,6 +26,9 @@ const getOutputFilePath = (id: string): string | undefined => {
  * Download a GitHub repository as ZIP without requiring Git
  */
 const downloadRepositoryZip = async (url: string, branch?: string): Promise<string> => {
+  console.log(`Input URL: "${url}"`);
+  console.log(`Input branch: "${branch}"`);
+  
   // Parse GitHub URL to get owner and repo
   const githubUrlMatch = url.match(/github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?(?:\/.*)?$/);
   
@@ -34,8 +37,34 @@ const downloadRepositoryZip = async (url: string, branch?: string): Promise<stri
   }
 
   const [, owner, repo] = githubUrlMatch;
-  const downloadBranch = branch || "main";
+  console.log(`Parsed owner: "${owner}", repo: "${repo}"`);
   
+  // Try different branch options for better compatibility
+  let downloadBranch = branch || "main";
+  console.log(`Using branch: "${downloadBranch}"`);
+  
+  // First attempt with specified branch or 'main'
+  try {
+    return await tryDownloadWithBranch(url, owner, repo, downloadBranch);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // If we tried 'main' and it failed with 404, try 'master'
+    if (errorMessage === "RETRY_WITH_MASTER" && downloadBranch === "main") {
+      console.log("Retrying with 'master' branch...");
+      downloadBranch = "master";
+      return await tryDownloadWithBranch(url, owner, repo, downloadBranch);
+    }
+    
+    // Re-throw the original error
+    throw error;
+  }
+};
+
+/**
+ * Helper function to try downloading with a specific branch
+ */
+const tryDownloadWithBranch = async (originalUrl: string, owner: string, repo: string, downloadBranch: string): Promise<string> => {
   // Create temporary directory for download
   const tempDir = await createToolWorkspace();
   const zipPath = path.join(tempDir, `${repo}.zip`);
@@ -72,7 +101,7 @@ const downloadRepositoryZip = async (url: string, branch?: string): Promise<stri
         writeStream.on('finish', resolve);
         writeStream.on('error', reject);
       } else if (response.statusCode === 404) {
-        reject(new Error(`Repository or branch not found. Tried branch: ${downloadBranch}. If this is a private repository, use the pack_codebase tool instead.`));
+        reject(new Error(`RETRY_WITH_MASTER`));
       } else {
         reject(new Error(`Failed to download repository: ${response.statusCode}`));
       }
