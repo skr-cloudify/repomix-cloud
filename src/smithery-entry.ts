@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import * as https from "node:https";
 import { createWriteStream } from "node:fs";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import yauzl from "yauzl";
+import * as yauzl from "yauzl";
 
 // Map to store generated output files
 const outputFileRegistry = new Map<string, string>();
