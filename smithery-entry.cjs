@@ -132,9 +132,67 @@ const formatToolError = (error) => {
 };
 
 /**
+ * Configure Git authentication for GitHub using token
+ */
+const configureGitAuth = async () => {
+  const githubToken = process.env.GITHUB_TOKEN;
+  if (!githubToken) {
+    console.log("No GitHub token found, skipping Git authentication setup");
+    return;
+  }
+
+  return new Promise((resolve, reject) => {
+    console.log("Configuring Git authentication with GitHub token...");
+    
+    // Configure Git to use token for GitHub authentication
+    const configCommand = spawn("git", [
+      "config", 
+      "--global", 
+      "url.https://x-access-token:" + githubToken + "@github.com/.insteadOf", 
+      "https://github.com/"
+    ], {
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    configCommand.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    configCommand.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    configCommand.on("close", (code) => {
+      if (code === 0) {
+        console.log("Git authentication configured successfully");
+        resolve();
+      } else {
+        console.log(`Git config failed with code ${code}: ${stderr}`);
+        // Don't reject, just continue without authentication
+        resolve();
+      }
+    });
+
+    configCommand.on("error", (error) => {
+      console.log(`Git config error: ${error.message}`);
+      // Don't reject, just continue without authentication
+      resolve();
+    });
+  });
+};
+
+/**
  * Run the repomix CLI with given options
  */
 const runRepomixCli = async (args, cwd, options = {}) => {
+  // Configure Git authentication if we have a token and are processing remote repos
+  if (options.remote && process.env.GITHUB_TOKEN) {
+    await configureGitAuth();
+  }
+
   return new Promise((resolve, reject) => {
     // Build command line arguments
     const cliArgs = [];
