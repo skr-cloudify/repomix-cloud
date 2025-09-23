@@ -25,13 +25,14 @@ const getOutputFilePath = (id: string): string | undefined => {
 
 /**
  * Try to download a repository with a specific branch
- * Uses environment-configured GitHub token if available, otherwise falls back to public access only
+ * Uses user-provided GitHub token if available, otherwise falls back to public access only
  */
 const tryDownloadWithBranch = async (
   owner: string,
   repo: string,
   branch: string,
-  tempDir: string
+  tempDir: string,
+  userGithubToken?: string
 ): Promise<{ success: boolean; zipPath?: string; error?: string }> => {
   const zipPath = path.join(tempDir, `${repo}.zip`);
   const downloadUrl = `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.zip`;
@@ -42,10 +43,9 @@ const tryDownloadWithBranch = async (
     "User-Agent": "repomix-mcp-server/1.0.0",
   };
 
-  // Use environment-configured GitHub token (per-user MCP instance)
-  const githubToken = process.env.GITHUB_TOKEN;
-  if (githubToken && githubToken !== "scan_mode") {
-    headers["Authorization"] = `token ${githubToken}`;
+  // SECURITY: Use user-provided token only, never global environment token
+  if (userGithubToken && userGithubToken !== "scan_mode") {
+    headers["Authorization"] = `token ${userGithubToken}`;
     console.log(
       "Using authenticated GitHub request for private repository access"
     );
@@ -124,11 +124,12 @@ const tryDownloadWithBranch = async (
 
 /**
  * Download a GitHub repository as ZIP without requiring Git
- * Uses environment-configured GitHub token for authentication
+ * Uses user-provided GitHub token for authentication
  */
 const downloadRepositoryZip = async (
   url: string,
-  branch?: string
+  branch?: string,
+  userGithubToken?: string
 ): Promise<string> => {
   // Parse GitHub URL to get owner and repo
   const githubUrlMatch = url.match(
@@ -152,7 +153,7 @@ const downloadRepositoryZip = async (
 
   if (branch) {
     // User specified a branch, try only that branch
-    const result = await tryDownloadWithBranch(owner, repo, branch, tempDir);
+    const result = await tryDownloadWithBranch(owner, repo, branch, tempDir, userGithubToken);
     if (!result.success) {
       throw new Error(
         `Failed to download repository with branch '${branch}': ${result.error}`
@@ -170,7 +171,8 @@ const downloadRepositoryZip = async (
         owner,
         repo,
         tryBranch,
-        tempDir
+        tempDir,
+        userGithubToken
       );
       if (result.success) {
         zipPath = result.zipPath!;
@@ -185,7 +187,7 @@ const downloadRepositoryZip = async (
       throw new Error(
         `Repository not found or inaccessible. Tried branches: ${branchesToTry.join(
           ", "
-        )}. This could be because:\n1. The repository is private (ZIP download only works for public repos)\n2. The repository doesn't exist\n3. Network connectivity issues\n\nFor private repositories, use the 'pack_codebase' tool with a local directory instead.`
+        )}. This could be because:\n1. The repository is private (requires GitHub token configuration)\n2. The repository doesn't exist\n3. Network connectivity issues\n\nFor private repositories, configure a GitHub token in your MCP server settings.`
       );
     }
   }
@@ -473,7 +475,9 @@ export const configSchema = z.object({
   githubToken: z
     .string()
     .optional()
-    .describe("GitHub personal access token for private repository access (configured per user)"),
+    .describe(
+      "GitHub personal access token for private repository access (configured per user)"
+    ),
   defaultCompress: z
     .boolean()
     .default(true)
@@ -509,11 +513,9 @@ export default function createServer({
     process.env.SMITHERY_MODE = "true";
 
     // Set environment variables from Smithery config or use scan mode defaults
+    // SECURITY: NEVER set GitHub tokens in global environment variables!
+    // Tokens must be passed per-request to prevent cross-user access
     if (config) {
-      // Each user's MCP instance gets their own token configuration
-      if (config.githubToken) {
-        process.env.GITHUB_TOKEN = config.githubToken;
-      }
       if (config.maxFileSize) {
         process.env.MAX_FILE_SIZE = String(config.maxFileSize);
       }
@@ -555,6 +557,10 @@ export default function createServer({
       "Package remote git repository into a consolidated file for AI analysis",
       {
         url: z.string().describe("Git repository URL to pack"),
+        githubToken: z
+          .string()
+          .optional()
+          .describe("GitHub personal access token for private repository access (required for private repos)"),
         compress: z
           .boolean()
           .default(true)
@@ -584,6 +590,7 @@ export default function createServer({
       },
       async ({
         url,
+        githubToken,
         compress,
         branch,
         includePatterns,
@@ -655,7 +662,7 @@ export default function createServer({
             // Use ZIP download method when Git is not available or failed
             console.log("Using ZIP download method for repository");
             try {
-              localRepoPath = await downloadRepositoryZip(url, branch);
+              localRepoPath = await downloadRepositoryZip(url, branch, githubToken);
               console.log(`Downloaded repository to: ${localRepoPath}`);
 
               // Use repomix on the downloaded directory (no --remote flag)
@@ -709,9 +716,9 @@ export default function createServer({
                 content: [
                   {
                     type: "text",
-                    text: `❌ Unable to download repository: ${errorMessage}\n\n🔒 SECURITY: For private repositories, you must provide your personal GitHub token in the 'githubToken' parameter.\n\nThis could also be because:\n1. The repository doesn't exist or is misspelled\n2. The branch '${
+                    text: `❌ Unable to download repository: ${errorMessage}\n\nThis could be because:\n1. The repository is private and no GitHub token is configured\n2. The branch '${
                       branch || "main"
-                    }' doesn't exist\n3. Network connectivity issues\n4. GitHub token lacks repository access permissions\n\n🔑 For private repositories:\n1. Generate a GitHub Personal Access Token with 'repo' scope\n2. Include it in the 'githubToken' parameter when calling this tool\n3. Each user must provide their own token for security\n\n📝 To create a GitHub token:\n1. Go to GitHub Settings > Developer settings > Personal access tokens\n2. Generate new token with 'repo' scope\n3. Use it in the githubToken parameter`,
+                    }' doesn't exist\n3. The repository URL is invalid\n4. Network connectivity issues\n5. GitHub token lacks repository access permissions\n\n🔑 For private repositories:\n1. Configure a GitHub Personal Access Token in your Smithery server settings\n2. The token needs 'repo' scope for private repository access\n3. Alternatively, download the repository as ZIP manually and use 'pack_codebase' tool\n\n📝 To create a GitHub token:\n1. Go to GitHub Settings > Developer settings > Personal access tokens\n2. Generate new token with 'repo' scope\n3. Configure it in your MCP server settings`,
                   },
                 ],
                 isError: true,
