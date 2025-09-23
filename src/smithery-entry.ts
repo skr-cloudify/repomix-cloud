@@ -25,6 +25,7 @@ const getOutputFilePath = (id: string): string | undefined => {
 
 /**
  * Try to download a repository with a specific branch
+ * Uses environment-configured GitHub token if available, otherwise falls back to public access only
  */
 const tryDownloadWithBranch = async (
   owner: string,
@@ -37,13 +38,12 @@ const tryDownloadWithBranch = async (
 
   console.log(`Attempting to download: ${downloadUrl}`);
 
-  // Get GitHub token from environment (set by Smithery config)
-  const githubToken = process.env.GITHUB_TOKEN;
   const headers: Record<string, string> = {
     "User-Agent": "repomix-mcp-server/1.0.0",
   };
 
-  // Add authentication headers if GitHub token is available
+  // Use environment-configured GitHub token (per-user MCP instance)
+  const githubToken = process.env.GITHUB_TOKEN;
   if (githubToken && githubToken !== "scan_mode") {
     headers["Authorization"] = `token ${githubToken}`;
     console.log(
@@ -124,6 +124,7 @@ const tryDownloadWithBranch = async (
 
 /**
  * Download a GitHub repository as ZIP without requiring Git
+ * Uses environment-configured GitHub token for authentication
  */
 const downloadRepositoryZip = async (
   url: string,
@@ -472,7 +473,7 @@ export const configSchema = z.object({
   githubToken: z
     .string()
     .optional()
-    .describe("GitHub personal access token for private repository access"),
+    .describe("GitHub personal access token for private repository access (configured per user)"),
   defaultCompress: z
     .boolean()
     .default(true)
@@ -509,6 +510,7 @@ export default function createServer({
 
     // Set environment variables from Smithery config or use scan mode defaults
     if (config) {
+      // Each user's MCP instance gets their own token configuration
       if (config.githubToken) {
         process.env.GITHUB_TOKEN = config.githubToken;
       }
@@ -526,9 +528,7 @@ export default function createServer({
       }
     } else {
       // For Smithery capability scanning, provide dummy values
-      if (!process.env.GITHUB_TOKEN) {
-        process.env.GITHUB_TOKEN = "scan_mode";
-      }
+      // SECURITY: No global GitHub token set
       if (!process.env.TOKEN_COUNT_ENCODING) {
         process.env.TOKEN_COUNT_ENCODING = "o200k_base";
       }
@@ -709,9 +709,9 @@ export default function createServer({
                 content: [
                   {
                     type: "text",
-                    text: `❌ Unable to download repository: ${errorMessage}\n\nThis could be because:\n1. The repository is private and no GitHub token is configured\n2. The branch '${
+                    text: `❌ Unable to download repository: ${errorMessage}\n\n🔒 SECURITY: For private repositories, you must provide your personal GitHub token in the 'githubToken' parameter.\n\nThis could also be because:\n1. The repository doesn't exist or is misspelled\n2. The branch '${
                       branch || "main"
-                    }' doesn't exist\n3. The repository URL is invalid\n4. Network connectivity issues\n5. GitHub token lacks repository access permissions\n\n🔑 For private repositories:\n1. Configure a GitHub Personal Access Token in your Smithery server settings\n2. The token needs 'repo' scope for private repository access\n3. Alternatively, download the repository as ZIP manually and use 'pack_codebase' tool\n\n📝 To create a GitHub token:\n1. Go to GitHub Settings > Developer settings > Personal access tokens\n2. Generate new token with 'repo' scope\n3. Configure it in your MCP server settings`,
+                    }' doesn't exist\n3. Network connectivity issues\n4. GitHub token lacks repository access permissions\n\n🔑 For private repositories:\n1. Generate a GitHub Personal Access Token with 'repo' scope\n2. Include it in the 'githubToken' parameter when calling this tool\n3. Each user must provide their own token for security\n\n📝 To create a GitHub token:\n1. Go to GitHub Settings > Developer settings > Personal access tokens\n2. Generate new token with 'repo' scope\n3. Use it in the githubToken parameter`,
                   },
                 ],
                 isError: true,
