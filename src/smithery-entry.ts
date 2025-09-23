@@ -7,7 +7,7 @@ import * as os from "node:os";
 import { spawn } from "node:child_process";
 import * as https from "node:https";
 import { createWriteStream } from "node:fs";
-import { pipeline } from "node:stream/promises";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 // Map to store generated output files
 const outputFileRegistry = new Map<string, string>();
@@ -196,7 +196,7 @@ const formatToolResponse = async (
   packResult: PackResult,
   outputFilePath: string,
   topFilesLength: number
-) => {
+): Promise<CallToolResult> => {
   try {
     // Read the output file
     const outputContent = await fs.readFile(outputFilePath, "utf-8");
@@ -272,6 +272,21 @@ const formatToolResponse = async (
       ],
     };
   }
+};
+
+/**
+ * Format tool error
+ */
+const formatToolError = (error: unknown): CallToolResult => {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: `Error: ${message}`,
+      },
+    ],
+  };
 };
 
 /**
@@ -391,43 +406,46 @@ export default function createServer({
     }
   }
 
-  // Create MCP server using the McpServer class as shown in Smithery docs
+  // Create MCP server using the McpServer class
   const server = new McpServer({
     name: "repomix-mcp-server",
     version: "1.0.0",
   });
 
-  // Register pack_remote_repository tool
-  server.registerTool(
+  // Register pack_remote_repository tool using the correct API
+  server.tool(
     "pack_remote_repository",
+    "Package remote git repository into a consolidated file for AI analysis",
+    {
+      url: z.string().describe("Git repository URL to pack"),
+      compress: z
+        .boolean()
+        .default(true)
+        .describe(
+          "Use Tree-sitter to extract essential code signatures while removing implementation details"
+        ),
+      branch: z.string().optional().describe("Git branch to pack (optional)"),
+      includePatterns: z
+        .string()
+        .optional()
+        .describe(
+          "Specify which files to include using fast-glob compatible patterns"
+        ),
+      ignorePatterns: z
+        .string()
+        .optional()
+        .describe(
+          "Specify additional files to exclude using fast-glob compatible patterns"
+        ),
+    },
     {
       title: "Pack Remote Repository",
-      description:
-        "Package remote git repository into a consolidated file for AI analysis",
-      inputSchema: {
-        url: z.string().describe("Git repository URL to pack"),
-        compress: z
-          .boolean()
-          .default(true)
-          .describe(
-            "Use Tree-sitter to extract essential code signatures while removing implementation details"
-          ),
-        branch: z.string().optional().describe("Git branch to pack (optional)"),
-        includePatterns: z
-          .string()
-          .optional()
-          .describe(
-            "Specify which files to include using fast-glob compatible patterns"
-          ),
-        ignorePatterns: z
-          .string()
-          .optional()
-          .describe(
-            "Specify additional files to exclude using fast-glob compatible patterns"
-          ),
-      },
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
     },
-    async ({ url, compress, branch, includePatterns, ignorePatterns }) => {
+    async ({ url, compress, branch, includePatterns, ignorePatterns }): Promise<CallToolResult> => {
       try {
         let useGitMethod = true;
         let localRepoPath = "";
@@ -557,53 +575,48 @@ export default function createServer({
         throw new Error("Unexpected error in repository processing");
       } catch (error) {
         console.error("Error in pack_remote_repository:", error);
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error: ${message}`,
-            },
-          ],
-        };
+        return formatToolError(error);
       }
     }
   );
 
   // Register pack_codebase tool
-  server.registerTool(
+  server.tool(
     "pack_codebase",
+    "Package local code directory into a consolidated file for AI analysis",
+    {
+      directory: z.string().describe("Directory to pack (Absolute path)"),
+      compress: z
+        .boolean()
+        .default(true)
+        .describe(
+          "Utilize Tree-sitter to intelligently extract essential code signatures and structure while removing implementation details, significantly reducing token usage (default: true)"
+        ),
+      includePatterns: z
+        .string()
+        .optional()
+        .describe(
+          'Specify which files to include using fast-glob compatible patterns (e.g., "**/*.js,src/**"). Only files matching these patterns will be processed. It is recommended to pack only necessary files.'
+        ),
+      ignorePatterns: z
+        .string()
+        .optional()
+        .describe(
+          'Specify additional files to exclude using fast-glob compatible patterns (e.g., "test/**,*.spec.js"). These patterns complement .gitignore and default ignores. It is recommended to pack only necessary files.'
+        ),
+      topFilesLength: z
+        .number()
+        .default(10)
+        .describe(
+          "Number of top files to display in the metrics (default: 10)"
+        ),
+    },
     {
       title: "Pack Local Codebase",
-      description:
-        "Package local code directory into a consolidated file for AI analysis",
-      inputSchema: {
-        directory: z.string().describe("Directory to pack (Absolute path)"),
-        compress: z
-          .boolean()
-          .default(true)
-          .describe(
-            "Utilize Tree-sitter to intelligently extract essential code signatures and structure while removing implementation details, significantly reducing token usage (default: true)"
-          ),
-        includePatterns: z
-          .string()
-          .optional()
-          .describe(
-            'Specify which files to include using fast-glob compatible patterns (e.g., "**/*.js,src/**"). Only files matching these patterns will be processed. It is recommended to pack only necessary files.'
-          ),
-        ignorePatterns: z
-          .string()
-          .optional()
-          .describe(
-            'Specify additional files to exclude using fast-glob compatible patterns (e.g., "test/**,*.spec.js"). These patterns complement .gitignore and default ignores. It is recommended to pack only necessary files.'
-          ),
-        topFilesLength: z
-          .number()
-          .default(10)
-          .describe(
-            "Number of top files to display in the metrics (default: 10)"
-          ),
-      },
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
     },
     async ({
       directory,
@@ -611,7 +624,7 @@ export default function createServer({
       includePatterns,
       ignorePatterns,
       topFilesLength,
-    }) => {
+    }): Promise<CallToolResult> => {
       try {
         const outputDir = await createToolWorkspace();
         const outputFilePath = path.join(outputDir, "codebase-output.xml");
@@ -674,33 +687,28 @@ export default function createServer({
           topFilesLength || 10
         );
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${message}`,
-            },
-          ],
-        };
+        return formatToolError(error);
       }
     }
   );
 
   // Register read_repomix_output tool
-  server.registerTool(
+  server.tool(
     "read_repomix_output",
+    "Read the contents of a previously generated repomix output file",
+    {
+      outputId: z
+        .string()
+        .describe("Output ID from a previous pack operation"),
+    },
     {
       title: "Read Repomix Output",
-      description:
-        "Read the contents of a previously generated repomix output file",
-      inputSchema: {
-        outputId: z
-          .string()
-          .describe("Output ID from a previous pack operation"),
-      },
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
     },
-    async ({ outputId }) => {
+    async ({ outputId }): Promise<CallToolResult> => {
       try {
         const filePath = getOutputFilePath(outputId);
 
@@ -726,30 +734,26 @@ export default function createServer({
           ],
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error reading output file: ${message}`,
-            },
-          ],
-        };
+        return formatToolError(error);
       }
     }
   );
 
   // Register file_system_read_file tool
-  server.registerTool(
+  server.tool(
     "file_system_read_file",
+    "Read the contents of a specific file from the file system",
+    {
+      path: z.string().describe("Absolute path to the file to read"),
+    },
     {
       title: "Read File",
-      description: "Read the contents of a specific file from the file system",
-      inputSchema: {
-        path: z.string().describe("Absolute path to the file to read"),
-      },
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
     },
-    async ({ path: filePath }) => {
+    async ({ path: filePath }): Promise<CallToolResult> => {
       try {
         const content = await fs.readFile(filePath, "utf-8");
 
@@ -762,30 +766,26 @@ export default function createServer({
           ],
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error reading file: ${message}`,
-            },
-          ],
-        };
+        return formatToolError(error);
       }
     }
   );
 
   // Register file_system_read_directory tool
-  server.registerTool(
+  server.tool(
     "file_system_read_directory",
+    "List the contents of a directory",
+    {
+      path: z.string().describe("Absolute path to the directory to read"),
+    },
     {
       title: "Read Directory",
-      description: "List the contents of a directory",
-      inputSchema: {
-        path: z.string().describe("Absolute path to the directory to read"),
-      },
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
     },
-    async ({ path: dirPath }) => {
+    async ({ path: dirPath }): Promise<CallToolResult> => {
       try {
         const items = await fs.readdir(dirPath, { withFileTypes: true });
         const contents = items
@@ -804,15 +804,7 @@ export default function createServer({
           ],
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error reading directory: ${message}`,
-            },
-          ],
-        };
+        return formatToolError(error);
       }
     }
   );

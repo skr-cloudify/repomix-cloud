@@ -1,2 +1,38 @@
 # Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
-runtime: "typescript"
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      githubToken:
+        type: string
+        description: "GitHub personal access token for private repository access"
+      token_count_encoding:
+        type: string
+        description: "Token count encoding used by tiktoken (e.g., 'o200k_base' for GPT-4o)"
+        default: "o200k_base"
+      security_check:
+        type: boolean
+        description: "Whether to perform security checks on files"
+        default: true
+      defaultCompress:
+        type: boolean
+        description: "Default compression setting for output"
+        default: true
+      maxFileSize:
+        type: number
+        description: "Maximum file size to process (in bytes)"
+        default: 50000000
+  commandFunction: |-
+    (config) => ({
+      command: 'node',
+      args: ['dist/mcp-server.js', '--mcp'],
+      env: {
+        GITHUB_TOKEN: config.githubToken || '',
+        TOKEN_COUNT_ENCODING: config.token_count_encoding || 'o200k_base',
+        SECURITY_CHECK: String(config.security_check || true),
+        DEFAULT_COMPRESS: String(config.defaultCompress || true),
+        MAX_FILE_SIZE: String(config.maxFileSize || 50000000)
+      }
+    })
