@@ -513,9 +513,11 @@ export default function createServer({
     process.env.SMITHERY_MODE = "true";
 
     // Set environment variables from Smithery config or use scan mode defaults
-    // SECURITY: NEVER set GitHub tokens in global environment variables!
-    // Tokens must be passed per-request to prevent cross-user access
+    // SECURITY: In Smithery, each user gets their own server instance,
+    // so we can safely store the user's token for their instance
+    let userGithubToken: string | undefined;
     if (config) {
+      userGithubToken = config.githubToken;
       if (config.maxFileSize) {
         process.env.MAX_FILE_SIZE = String(config.maxFileSize);
       }
@@ -560,7 +562,7 @@ export default function createServer({
         githubToken: z
           .string()
           .optional()
-          .describe("GitHub personal access token for private repository access (required for private repos)"),
+          .describe("GitHub personal access token for private repository access (optional if configured in server settings)"),
         compress: z
           .boolean()
           .default(true)
@@ -597,6 +599,9 @@ export default function createServer({
         ignorePatterns,
       }): Promise<CallToolResult> => {
         try {
+          // Use the provided token or fall back to the user's configured token
+          const effectiveGithubToken = githubToken || userGithubToken;
+          
           let useGitMethod = true;
           let localRepoPath = "";
 
@@ -662,7 +667,7 @@ export default function createServer({
             // Use ZIP download method when Git is not available or failed
             console.log("Using ZIP download method for repository");
             try {
-              localRepoPath = await downloadRepositoryZip(url, branch, githubToken);
+              localRepoPath = await downloadRepositoryZip(url, branch, effectiveGithubToken);
               console.log(`Downloaded repository to: ${localRepoPath}`);
 
               // Use repomix on the downloaded directory (no --remote flag)
