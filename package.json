@@ -12,9 +12,9 @@
     "tsconfig.json"
   ],
   "scripts": {
-    "build": "npx @smithery/cli build",
     "dev": "npx @smithery/cli dev",
-    "start": "node src/smithery-entry.ts"
+    "build": "npx @smithery/cli build",
+    "start": "node .smithery/index.cjs"
   },
   "dependencies": {
     "@clack/prompts": "^0.6.3",
