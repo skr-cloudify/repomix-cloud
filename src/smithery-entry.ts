@@ -297,6 +297,21 @@ export default function createServer({
     },
     async ({ url, compress, branch, includePatterns, ignorePatterns }) => {
       try {
+        // Check if Git is available
+        try {
+          await execCommand("git", ["--version"]);
+        } catch (gitError) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "❌ Git is not installed or not available in the system PATH. This tool requires Git to be installed to clone and process remote repositories.\n\nFor private repositories, you can:\n1. Download the repository as a ZIP file\n2. Extract it locally\n3. Use the 'pack_codebase' tool to process the local directory\n\nAlternatively, if this is a public repository, you can try accessing it through a different method.",
+              },
+            ],
+            isError: true,
+          };
+        }
+
         const outputDir = await createToolWorkspace();
         const outputFilePath = path.join(outputDir, "repository-output.xml");
 
