@@ -2,18 +2,19 @@
   "name": "repo-to-file-mcp",
   "version": "1.0.0",
   "description": "Model Context Protocol server for converting repositories to files for LLM consumption with private repository support",
-  "main": "index.js",
-  "module": "index.js",
+  "type": "module",
+  "main": "src/smithery-entry.ts",
+  "module": "src/smithery-entry.ts",
   "files": [
-    "index.js",
-    "lib/",
+    "src/",
     "package.json",
-    "README.md"
+    "README.md",
+    "tsconfig.json"
   ],
   "scripts": {
-    "build": "mkdir -p lib && cp index.js lib/",
-    "smithery-build": "npx @smithery/cli build",
-    "start": "node index.js"
+    "build": "npx @smithery/cli build",
+    "dev": "npx @smithery/cli dev",
+    "start": "node src/smithery-entry.ts"
   },
   "dependencies": {
     "@clack/prompts": "^0.6.3",
