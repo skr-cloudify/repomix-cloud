@@ -6,8 +6,10 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import { spawn } from "node:child_process";
 import * as https from "node:https";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, createReadStream } from "node:fs";
+import { createGunzip } from "node:zlib";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import * as yauzl from "yauzl";
 
 // Map to store generated output files
 const outputFileRegistry = new Map<string, string>();
@@ -110,23 +112,57 @@ const tryDownloadWithBranch = async (originalUrl: string, owner: string, repo: s
 
   console.log(`Downloaded ZIP to: ${zipPath}`);
 
-  // Check if unzip command is available
-  let hasUnzip = false;
+  // Extract ZIP file using Node.js yauzl library (most reliable)
   try {
-    const unzipCheck = await execCommand("which", ["unzip"]);
-    hasUnzip = unzipCheck.exitCode === 0;
-  } catch (error) {
-    hasUnzip = false;
-  }
-
-  if (!hasUnzip) {
-    // Try alternative unzip methods
+    await fs.mkdir(extractPath, { recursive: true });
+    await extractZipWithNodeJS(zipPath, extractPath);
+    
+    console.log("Successfully extracted using Node.js yauzl");
+    // Find the extracted directory (GitHub creates a folder with repo-branch format)
+    const extractedItems = await fs.readdir(extractPath);
+    const repoDir = extractedItems.find(item => item.startsWith(`${repo}-${downloadBranch}`));
+    
+    if (repoDir) {
+      return path.join(extractPath, repoDir);
+    } else {
+      // If no matching directory found, return the first directory
+      const firstDir = extractedItems.find(async item => {
+        const stat = await fs.stat(path.join(extractPath, item));
+        return stat.isDirectory();
+      });
+      if (firstDir) {
+        return path.join(extractPath, firstDir);
+      }
+    }
+  } catch (nodeError) {
+    console.error("Node.js ZIP extraction failed:", nodeError);
+    
+    // Fallback to system unzip if available
     try {
-      // Check for node-based alternatives or try different commands
+      const unzipCheck = await execCommand("which", ["unzip"]);
+      if (unzipCheck.exitCode === 0) {
+        console.log("Falling back to system unzip command");
+        const unzipResult = await execCommand("unzip", ["-q", zipPath, "-d", extractPath]);
+        
+        if (unzipResult.exitCode === 0) {
+          console.log("Successfully extracted using unzip command");
+          const extractedItems = await fs.readdir(extractPath);
+          const repoDir = extractedItems.find(item => item.startsWith(`${repo}-${downloadBranch}`));
+          
+          if (repoDir) {
+            return path.join(extractPath, repoDir);
+          }
+        }
+      }
+    } catch (unzipError) {
+      console.log("System unzip not available");
+    }
+    
+    // Final fallback to Python
+    try {
       const pythonUnzipCheck = await execCommand("python3", ["-c", "import zipfile; print('available')"]);
       if (pythonUnzipCheck.exitCode === 0) {
-        // Use Python to unzip
-        await fs.mkdir(extractPath, { recursive: true });
+        console.log("Falling back to Python extraction");
         const pythonScript = `
 import zipfile
 import os
@@ -140,7 +176,6 @@ print('extracted')
         
         if (pythonResult.exitCode === 0) {
           console.log("Successfully extracted using Python");
-          // Find the extracted directory
           const extractedItems = await fs.readdir(extractPath);
           const repoDir = extractedItems.find(item => item.startsWith(`${repo}-${downloadBranch}`));
           
@@ -149,35 +184,76 @@ print('extracted')
           }
         }
       }
-    } catch (error) {
-      console.log("Python extraction failed:", error);
+    } catch (pythonError) {
+      console.log("Python extraction failed:", pythonError);
     }
-    
-    throw new Error("No extraction method available. Both 'unzip' command and Python are unavailable.");
-  }
-
-  // Extract ZIP file using system unzip
-  try {
-    await fs.mkdir(extractPath, { recursive: true });
-    const unzipResult = await execCommand("unzip", ["-q", zipPath, "-d", extractPath]);
-    
-    if (unzipResult.exitCode === 0) {
-      console.log("Successfully extracted using unzip command");
-      // Find the extracted directory (GitHub creates a folder with repo-branch format)
-      const extractedItems = await fs.readdir(extractPath);
-      const repoDir = extractedItems.find(item => item.startsWith(`${repo}-${downloadBranch}`));
-      
-      if (repoDir) {
-        return path.join(extractPath, repoDir);
-      }
-    } else {
-      console.error("Unzip failed:", unzipResult.stderr);
-    }
-  } catch (error) {
-    console.error("Extraction error:", error);
   }
   
-  throw new Error("Failed to extract repository ZIP file");
+  throw new Error("Failed to extract repository ZIP file using any available method");
+};
+
+/**
+ * Extract ZIP file using Node.js yauzl library
+ */
+const extractZipWithNodeJS = (zipPath: string, extractPath: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      if (!zipfile) {
+        reject(new Error("Failed to open ZIP file"));
+        return;
+      }
+
+      zipfile.readEntry();
+      
+      zipfile.on("entry", (entry) => {
+        if (/\/$/.test(entry.fileName)) {
+          // Directory entry
+          const dirPath = path.join(extractPath, entry.fileName);
+          fs.mkdir(dirPath, { recursive: true }).then(() => {
+            zipfile.readEntry();
+          }).catch(reject);
+        } else {
+          // File entry
+          zipfile.openReadStream(entry, (err, readStream) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+
+            if (!readStream) {
+              reject(new Error("Failed to create read stream"));
+              return;
+            }
+
+            const filePath = path.join(extractPath, entry.fileName);
+            const dirPath = path.dirname(filePath);
+            
+            fs.mkdir(dirPath, { recursive: true }).then(() => {
+              const writeStream = createWriteStream(filePath);
+              readStream.pipe(writeStream);
+              
+              writeStream.on("close", () => {
+                zipfile.readEntry();
+              });
+              
+              writeStream.on("error", reject);
+            }).catch(reject);
+          });
+        }
+      });
+
+      zipfile.on("end", () => {
+        resolve();
+      });
+
+      zipfile.on("error", reject);
+    });
+  });
 };
 
 /**
