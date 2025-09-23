@@ -6,10 +6,8 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import { spawn } from "node:child_process";
 import * as https from "node:https";
-import { createWriteStream, createReadStream } from "node:fs";
-import { createGunzip } from "node:zlib";
+import { createWriteStream } from "node:fs";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import * as yauzl from "yauzl";
 
 // Map to store generated output files
 const outputFileRegistry = new Map<string, string>();
@@ -25,144 +23,193 @@ const getOutputFilePath = (id: string): string | undefined => {
 };
 
 /**
- * Download a GitHub repository as ZIP without requiring Git
+ * Try to download a repository with a specific branch
  */
-const downloadRepositoryZip = async (url: string, branch?: string): Promise<string> => {
-  console.log(`Input URL: "${url}"`);
-  console.log(`Input branch: "${branch}"`);
-  
-  // Parse GitHub URL to get owner and repo
-  const githubUrlMatch = url.match(/github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?(?:\/.*)?$/);
-  
-  if (!githubUrlMatch) {
-    throw new Error("Invalid GitHub URL format. Expected: https://github.com/owner/repo");
+const tryDownloadWithBranch = async (
+  owner: string,
+  repo: string,
+  branch: string,
+  tempDir: string
+): Promise<{ success: boolean; zipPath?: string; error?: string }> => {
+  const zipPath = path.join(tempDir, `${repo}.zip`);
+  const downloadUrl = `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.zip`;
+
+  console.log(`Attempting to download: ${downloadUrl}`);
+
+  // Get GitHub token from environment (set by Smithery config)
+  const githubToken = process.env.GITHUB_TOKEN;
+  const headers: Record<string, string> = {
+    "User-Agent": "repomix-mcp-server/1.0.0",
+  };
+
+  // Add authentication headers if GitHub token is available
+  if (githubToken && githubToken !== "scan_mode") {
+    headers["Authorization"] = `token ${githubToken}`;
+    console.log(
+      "Using authenticated GitHub request for private repository access"
+    );
+  } else {
+    console.log("Using unauthenticated request (public repositories only)");
   }
 
-  const [, owner, repo] = githubUrlMatch;
-  console.log(`Parsed owner: "${owner}", repo: "${repo}"`);
-  
-  // Try different branch options for better compatibility
-  let downloadBranch = branch || "main";
-  console.log(`Using branch: "${downloadBranch}"`);
-  
-  // First attempt with specified branch or 'main'
   try {
-    return await tryDownloadWithBranch(url, owner, repo, downloadBranch);
+    await new Promise<void>((resolve, reject) => {
+      const options = {
+        headers,
+      };
+
+      https
+        .get(downloadUrl, options, (response) => {
+          if (response.statusCode === 302 || response.statusCode === 301) {
+            // Follow redirect
+            const redirectUrl = response.headers.location;
+            if (redirectUrl) {
+              https
+                .get(redirectUrl, { headers }, (redirectResponse) => {
+                  if (redirectResponse.statusCode === 200) {
+                    const writeStream = createWriteStream(zipPath);
+                    redirectResponse.pipe(writeStream);
+                    writeStream.on("finish", resolve);
+                    writeStream.on("error", reject);
+                  } else {
+                    reject(
+                      new Error(
+                        `Failed to download repository: ${redirectResponse.statusCode}`
+                      )
+                    );
+                  }
+                })
+                .on("error", reject);
+            } else {
+              reject(new Error("Redirect location not found"));
+            }
+          } else if (response.statusCode === 200) {
+            const writeStream = createWriteStream(zipPath);
+            response.pipe(writeStream);
+            writeStream.on("finish", resolve);
+            writeStream.on("error", reject);
+          } else if (response.statusCode === 404) {
+            reject(
+              new Error(`Repository or branch '${branch}' not found (404)`)
+            );
+          } else if (response.statusCode === 401) {
+            reject(
+              new Error(
+                `Unauthorized access. For private repositories, please configure a GitHub token with repository access.`
+              )
+            );
+          } else if (response.statusCode === 403) {
+            reject(
+              new Error(
+                `Forbidden access. GitHub token may lack sufficient permissions or rate limit exceeded.`
+              )
+            );
+          } else {
+            reject(
+              new Error(`Failed to download repository: ${response.statusCode}`)
+            );
+          }
+        })
+        .on("error", reject);
+    });
+
+    return { success: true, zipPath };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
-    // If we tried 'main' and it failed with 404, try 'master'
-    if (errorMessage === "RETRY_WITH_MASTER" && downloadBranch === "main") {
-      console.log("Retrying with 'master' branch...");
-      downloadBranch = "master";
-      return await tryDownloadWithBranch(url, owner, repo, downloadBranch);
-    }
-    
-    // Re-throw the original error
-    throw error;
+    console.log(`Download failed for branch '${branch}': ${errorMessage}`);
+    return { success: false, error: errorMessage };
   }
 };
 
 /**
- * Helper function to try downloading with a specific branch
+ * Download a GitHub repository as ZIP without requiring Git
  */
-const tryDownloadWithBranch = async (originalUrl: string, owner: string, repo: string, downloadBranch: string): Promise<string> => {
+const downloadRepositoryZip = async (
+  url: string,
+  branch?: string
+): Promise<string> => {
+  // Parse GitHub URL to get owner and repo
+  const githubUrlMatch = url.match(
+    /github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?(?:\/.*)?$/
+  );
+
+  if (!githubUrlMatch) {
+    throw new Error(
+      "Invalid GitHub URL format. Expected: https://github.com/owner/repo"
+    );
+  }
+
+  const [, owner, repo] = githubUrlMatch;
+
   // Create temporary directory for download
   const tempDir = await createToolWorkspace();
-  const zipPath = path.join(tempDir, `${repo}.zip`);
   const extractPath = path.join(tempDir, "extracted");
-  
-  // GitHub ZIP download URL
-  const downloadUrl = `https://github.com/${owner}/${repo}/archive/refs/heads/${downloadBranch}.zip`;
-  
-  console.log(`Attempting to download: ${downloadUrl}`);
-  
-  // Download the ZIP file
-  await new Promise<void>((resolve, reject) => {
-    https.get(downloadUrl, (response) => {
-      if (response.statusCode === 302 || response.statusCode === 301) {
-        // Follow redirect
-        const redirectUrl = response.headers.location;
-        if (redirectUrl) {
-          https.get(redirectUrl, (redirectResponse) => {
-            if (redirectResponse.statusCode === 200) {
-              const writeStream = createWriteStream(zipPath);
-              redirectResponse.pipe(writeStream);
-              writeStream.on('finish', resolve);
-              writeStream.on('error', reject);
-            } else {
-              reject(new Error(`Failed to download repository: ${redirectResponse.statusCode}`));
-            }
-          }).on('error', reject);
-        } else {
-          reject(new Error('Redirect location not found'));
-        }
-      } else if (response.statusCode === 200) {
-        const writeStream = createWriteStream(zipPath);
-        response.pipe(writeStream);
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
-      } else if (response.statusCode === 404) {
-        reject(new Error(`RETRY_WITH_MASTER`));
-      } else {
-        reject(new Error(`Failed to download repository: ${response.statusCode}`));
+
+  let zipPath: string;
+  let downloadBranch: string;
+
+  if (branch) {
+    // User specified a branch, try only that branch
+    const result = await tryDownloadWithBranch(owner, repo, branch, tempDir);
+    if (!result.success) {
+      throw new Error(
+        `Failed to download repository with branch '${branch}': ${result.error}`
+      );
+    }
+    zipPath = result.zipPath!;
+    downloadBranch = branch;
+  } else {
+    // No branch specified, try common default branches
+    const branchesToTry = ["main", "master"];
+    let success = false;
+
+    for (const tryBranch of branchesToTry) {
+      const result = await tryDownloadWithBranch(
+        owner,
+        repo,
+        tryBranch,
+        tempDir
+      );
+      if (result.success) {
+        zipPath = result.zipPath!;
+        downloadBranch = tryBranch;
+        success = true;
+        console.log(`Successfully downloaded using branch: ${tryBranch}`);
+        break;
       }
-    }).on('error', reject);
-  });
+    }
+
+    if (!success) {
+      throw new Error(
+        `Repository not found or inaccessible. Tried branches: ${branchesToTry.join(
+          ", "
+        )}. This could be because:\n1. The repository is private (ZIP download only works for public repos)\n2. The repository doesn't exist\n3. Network connectivity issues\n\nFor private repositories, use the 'pack_codebase' tool with a local directory instead.`
+      );
+    }
+  }
 
   console.log(`Downloaded ZIP to: ${zipPath}`);
 
-  // Extract ZIP file using Node.js yauzl library (most reliable)
+  // Check if unzip command is available
+  let hasUnzip = false;
   try {
-    await fs.mkdir(extractPath, { recursive: true });
-    await extractZipWithNodeJS(zipPath, extractPath);
-    
-    console.log("Successfully extracted using Node.js yauzl");
-    // Find the extracted directory (GitHub creates a folder with repo-branch format)
-    const extractedItems = await fs.readdir(extractPath);
-    const repoDir = extractedItems.find(item => item.startsWith(`${repo}-${downloadBranch}`));
-    
-    if (repoDir) {
-      return path.join(extractPath, repoDir);
-    } else {
-      // If no matching directory found, return the first directory
-      const firstDir = extractedItems.find(async item => {
-        const stat = await fs.stat(path.join(extractPath, item));
-        return stat.isDirectory();
-      });
-      if (firstDir) {
-        return path.join(extractPath, firstDir);
-      }
-    }
-  } catch (nodeError) {
-    console.error("Node.js ZIP extraction failed:", nodeError);
-    
-    // Fallback to system unzip if available
+    const unzipCheck = await execCommand("which", ["unzip"]);
+    hasUnzip = unzipCheck.exitCode === 0;
+  } catch (error) {
+    hasUnzip = false;
+  }
+
+  if (!hasUnzip) {
+    // Try alternative unzip methods
     try {
-      const unzipCheck = await execCommand("which", ["unzip"]);
-      if (unzipCheck.exitCode === 0) {
-        console.log("Falling back to system unzip command");
-        const unzipResult = await execCommand("unzip", ["-q", zipPath, "-d", extractPath]);
-        
-        if (unzipResult.exitCode === 0) {
-          console.log("Successfully extracted using unzip command");
-          const extractedItems = await fs.readdir(extractPath);
-          const repoDir = extractedItems.find(item => item.startsWith(`${repo}-${downloadBranch}`));
-          
-          if (repoDir) {
-            return path.join(extractPath, repoDir);
-          }
-        }
-      }
-    } catch (unzipError) {
-      console.log("System unzip not available");
-    }
-    
-    // Final fallback to Python
-    try {
-      const pythonUnzipCheck = await execCommand("python3", ["-c", "import zipfile; print('available')"]);
+      // Check for node-based alternatives or try different commands
+      const pythonUnzipCheck = await execCommand("python3", [
+        "-c",
+        "import zipfile; print('available')",
+      ]);
       if (pythonUnzipCheck.exitCode === 0) {
-        console.log("Falling back to Python extraction");
+        // Use Python to unzip
+        await fs.mkdir(extractPath, { recursive: true });
         const pythonScript = `
 import zipfile
 import os
@@ -170,90 +217,61 @@ with zipfile.ZipFile('${zipPath}', 'r') as zip_ref:
     zip_ref.extractall('${extractPath}')
 print('extracted')
 `;
-        const scriptPath = path.join(tempDir, 'unzip.py');
+        const scriptPath = path.join(tempDir, "unzip.py");
         await fs.writeFile(scriptPath, pythonScript);
         const pythonResult = await execCommand("python3", [scriptPath]);
-        
+
         if (pythonResult.exitCode === 0) {
           console.log("Successfully extracted using Python");
+          // Find the extracted directory
           const extractedItems = await fs.readdir(extractPath);
-          const repoDir = extractedItems.find(item => item.startsWith(`${repo}-${downloadBranch}`));
-          
+          const repoDir = extractedItems.find((item) =>
+            item.startsWith(`${repo}-${downloadBranch}`)
+          );
+
           if (repoDir) {
             return path.join(extractPath, repoDir);
           }
         }
       }
-    } catch (pythonError) {
-      console.log("Python extraction failed:", pythonError);
+    } catch (error) {
+      console.log("Python extraction failed:", error);
     }
+
+    throw new Error(
+      "No extraction method available. Both 'unzip' command and Python are unavailable."
+    );
   }
-  
-  throw new Error("Failed to extract repository ZIP file using any available method");
-};
 
-/**
- * Extract ZIP file using Node.js yauzl library
- */
-const extractZipWithNodeJS = (zipPath: string, extractPath: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
-      if (err) {
-        reject(err);
-        return;
+  // Extract ZIP file using system unzip
+  try {
+    await fs.mkdir(extractPath, { recursive: true });
+    const unzipResult = await execCommand("unzip", [
+      "-q",
+      zipPath,
+      "-d",
+      extractPath,
+    ]);
+
+    if (unzipResult.exitCode === 0) {
+      console.log("Successfully extracted using unzip command");
+      // Find the extracted directory (GitHub creates a folder with repo-branch format)
+      const extractedItems = await fs.readdir(extractPath);
+      const repoDir = extractedItems.find((item) =>
+        item.startsWith(`${repo}-${downloadBranch}`)
+      );
+
+      if (repoDir) {
+        return path.join(extractPath, repoDir);
       }
+    } else {
+      console.error("Unzip failed:", unzipResult.stderr);
+    }
+  } catch (error) {
+    console.error("Extraction error:", error);
+  }
 
-      if (!zipfile) {
-        reject(new Error("Failed to open ZIP file"));
-        return;
-      }
-
-      zipfile.readEntry();
-      
-      zipfile.on("entry", (entry) => {
-        if (/\/$/.test(entry.fileName)) {
-          // Directory entry
-          const dirPath = path.join(extractPath, entry.fileName);
-          fs.mkdir(dirPath, { recursive: true }).then(() => {
-            zipfile.readEntry();
-          }).catch(reject);
-        } else {
-          // File entry
-          zipfile.openReadStream(entry, (err, readStream) => {
-            if (err) {
-              reject(err);
-              return;
-            }
-
-            if (!readStream) {
-              reject(new Error("Failed to create read stream"));
-              return;
-            }
-
-            const filePath = path.join(extractPath, entry.fileName);
-            const dirPath = path.dirname(filePath);
-            
-            fs.mkdir(dirPath, { recursive: true }).then(() => {
-              const writeStream = createWriteStream(filePath);
-              readStream.pipe(writeStream);
-              
-              writeStream.on("close", () => {
-                zipfile.readEntry();
-              });
-              
-              writeStream.on("error", reject);
-            }).catch(reject);
-          });
-        }
-      });
-
-      zipfile.on("end", () => {
-        resolve();
-      });
-
-      zipfile.on("error", reject);
-    });
-  });
+  throw new Error("Failed to extract repository ZIP file");
 };
 
 /**
@@ -550,7 +568,13 @@ export default function createServer({
       idempotentHint: false,
       openWorldHint: true,
     },
-    async ({ url, compress, branch, includePatterns, ignorePatterns }): Promise<CallToolResult> => {
+    async ({
+      url,
+      compress,
+      branch,
+      includePatterns,
+      ignorePatterns,
+    }): Promise<CallToolResult> => {
       try {
         let useGitMethod = true;
         let localRepoPath = "";
@@ -593,7 +617,7 @@ export default function createServer({
           args.push("--output", outputFilePath);
 
           console.log(`Executing: npx repomix ${args.join(" ")}`);
-          
+
           // Execute repomix command
           const result = await execCommand("npx", ["repomix", ...args]);
 
@@ -612,14 +636,14 @@ export default function createServer({
             );
           }
         }
-        
+
         if (!useGitMethod) {
           // Use ZIP download method when Git is not available or failed
           console.log("Using ZIP download method for repository");
           try {
             localRepoPath = await downloadRepositoryZip(url, branch);
             console.log(`Downloaded repository to: ${localRepoPath}`);
-            
+
             // Use repomix on the downloaded directory (no --remote flag)
             const args: string[] = [localRepoPath];
 
@@ -638,7 +662,7 @@ export default function createServer({
             args.push("--output", outputFilePath);
 
             console.log(`Executing: npx repomix ${args.join(" ")}`);
-            
+
             const result = await execCommand("npx", ["repomix", ...args]);
 
             if (result.exitCode !== 0) {
@@ -653,7 +677,7 @@ export default function createServer({
                 ],
               };
             }
-            
+
             // ZIP method succeeded
             const packResult: PackResult = {};
             return await formatToolResponse(
@@ -663,12 +687,17 @@ export default function createServer({
               10
             );
           } catch (downloadError) {
-            const errorMessage = downloadError instanceof Error ? downloadError.message : String(downloadError);
+            const errorMessage =
+              downloadError instanceof Error
+                ? downloadError.message
+                : String(downloadError);
             return {
               content: [
                 {
                   type: "text",
-                  text: `❌ Unable to download repository: ${errorMessage}\n\nThis could be because:\n1. The repository is private (ZIP download only works for public repos)\n2. The branch '${branch || 'main'}' doesn't exist\n3. The repository URL is invalid\n4. Network connectivity issues\n\nFor private repositories:\n1. Download the repository as a ZIP file manually\n2. Extract it locally\n3. Use the 'pack_codebase' tool to process the local directory`,
+                  text: `❌ Unable to download repository: ${errorMessage}\n\nThis could be because:\n1. The repository is private and no GitHub token is configured\n2. The branch '${
+                    branch || "main"
+                  }' doesn't exist\n3. The repository URL is invalid\n4. Network connectivity issues\n5. GitHub token lacks repository access permissions\n\n🔑 For private repositories:\n1. Configure a GitHub Personal Access Token in your Smithery server settings\n2. The token needs 'repo' scope for private repository access\n3. Alternatively, download the repository as ZIP manually and use 'pack_codebase' tool\n\n📝 To create a GitHub token:\n1. Go to GitHub Settings > Developer settings > Personal access tokens\n2. Generate new token with 'repo' scope\n3. Configure it in your MCP server settings`,
                 },
               ],
               isError: true,
@@ -802,9 +831,7 @@ export default function createServer({
     "read_repomix_output",
     "Read the contents of a previously generated repomix output file",
     {
-      outputId: z
-        .string()
-        .describe("Output ID from a previous pack operation"),
+      outputId: z.string().describe("Output ID from a previous pack operation"),
     },
     {
       title: "Read Repomix Output",
@@ -915,5 +942,5 @@ export default function createServer({
   );
 
   // Return the MCP server object as required by Smithery
-  return server.server;
+  return server;
 }
