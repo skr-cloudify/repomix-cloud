@@ -265,59 +265,6 @@ export default function createServer({
     version: "1.0.0",
   });
 
-  // Register pack_codebase tool
-  server.registerTool(
-    "pack_codebase",
-    {
-      title: "Pack Local Codebase",
-      description:
-        "Package local code directory into a consolidated file for AI analysis",
-      inputSchema: {
-        directory: z.string().describe("Directory to pack (Absolute path)"),
-        compress: z
-          .boolean()
-          .default(true)
-          .describe(
-            "Utilize Tree-sitter to intelligently extract essential code signatures and structure while removing implementation details, significantly reducing token usage (default: true)"
-          ),
-        includePatterns: z
-          .string()
-          .optional()
-          .describe(
-            'Specify which files to include using fast-glob compatible patterns (e.g., "**/*.js,src/**"). Only files matching these patterns will be processed. It is recommended to pack only necessary files.'
-          ),
-        ignorePatterns: z
-          .string()
-          .optional()
-          .describe(
-            'Specify additional files to exclude using fast-glob compatible patterns (e.g., "test/**,*.spec.js"). These patterns complement .gitignore and default ignores. It is recommended to pack only necessary files.'
-          ),
-        topFilesLength: z
-          .number()
-          .default(10)
-          .describe(
-            "Number of top files to display in the metrics (default: 10)"
-          ),
-      },
-    },
-    async ({
-      directory,
-      compress,
-      includePatterns,
-      ignorePatterns,
-      topFilesLength,
-    }) => {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Packing directory: ${directory}`,
-          },
-        ],
-      };
-    }
-  );
-
   // Register pack_remote_repository tool
   server.registerTool(
     "pack_remote_repository",
@@ -357,7 +304,7 @@ export default function createServer({
         const args: string[] = ["--remote", url];
 
         if (compress) {
-          args.push("--style", "compress");
+          args.push("--compress");
         }
 
         if (branch) {
@@ -478,7 +425,7 @@ export default function createServer({
         const args: string[] = [directory];
 
         if (compress) {
-          args.push("--style", "compress");
+          args.push("--compress");
         }
 
         if (includePatterns) {
