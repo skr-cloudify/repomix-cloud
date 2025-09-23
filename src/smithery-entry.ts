@@ -5,6 +5,9 @@ import * as crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import { spawn } from "node:child_process";
+import * as https from "node:https";
+import { createWriteStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
 
 // Map to store generated output files
 const outputFileRegistry = new Map<string, string>();
@@ -17,6 +20,82 @@ const registerOutputFile = (id: string, filePath: string): void => {
 // Get file path from output ID
 const getOutputFilePath = (id: string): string | undefined => {
   return outputFileRegistry.get(id);
+};
+
+/**
+ * Download a GitHub repository as ZIP without requiring Git
+ */
+const downloadRepositoryZip = async (url: string, branch?: string): Promise<string> => {
+  // Parse GitHub URL to get owner and repo
+  const githubUrlMatch = url.match(/github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?(?:\/.*)?$/);
+  
+  if (!githubUrlMatch) {
+    throw new Error("Invalid GitHub URL format. Expected: https://github.com/owner/repo");
+  }
+
+  const [, owner, repo] = githubUrlMatch;
+  const downloadBranch = branch || "main";
+  
+  // Create temporary directory for download
+  const tempDir = await createToolWorkspace();
+  const zipPath = path.join(tempDir, `${repo}.zip`);
+  const extractPath = path.join(tempDir, "extracted");
+  
+  // GitHub ZIP download URL
+  const downloadUrl = `https://github.com/${owner}/${repo}/archive/refs/heads/${downloadBranch}.zip`;
+  
+  // Download the ZIP file
+  await new Promise<void>((resolve, reject) => {
+    https.get(downloadUrl, (response) => {
+      if (response.statusCode === 302 || response.statusCode === 301) {
+        // Follow redirect
+        const redirectUrl = response.headers.location;
+        if (redirectUrl) {
+          https.get(redirectUrl, (redirectResponse) => {
+            if (redirectResponse.statusCode === 200) {
+              const writeStream = createWriteStream(zipPath);
+              redirectResponse.pipe(writeStream);
+              writeStream.on('finish', resolve);
+              writeStream.on('error', reject);
+            } else {
+              reject(new Error(`Failed to download repository: ${redirectResponse.statusCode}`));
+            }
+          }).on('error', reject);
+        } else {
+          reject(new Error('Redirect location not found'));
+        }
+      } else if (response.statusCode === 200) {
+        const writeStream = createWriteStream(zipPath);
+        response.pipe(writeStream);
+        writeStream.on('finish', resolve);
+        writeStream.on('error', reject);
+      } else {
+        reject(new Error(`Failed to download repository: ${response.statusCode}`));
+      }
+    }).on('error', reject);
+  });
+
+  // Extract ZIP file using Node.js built-in modules would be complex
+  // For now, we'll use system unzip if available, or return the temp dir
+  try {
+    await fs.mkdir(extractPath, { recursive: true });
+    const unzipResult = await execCommand("unzip", ["-q", zipPath, "-d", extractPath]);
+    
+    if (unzipResult.exitCode === 0) {
+      // Find the extracted directory (GitHub creates a folder with repo-branch format)
+      const extractedItems = await fs.readdir(extractPath);
+      const repoDir = extractedItems.find(item => item.startsWith(`${repo}-${downloadBranch}`));
+      
+      if (repoDir) {
+        return path.join(extractPath, repoDir);
+      }
+    }
+  } catch (error) {
+    // Fallback: if unzip fails, we'll need to handle this differently
+    console.warn("Could not extract ZIP file:", error);
+  }
+  
+  throw new Error("Failed to extract repository ZIP file");
 };
 
 /**
@@ -297,78 +376,108 @@ export default function createServer({
     },
     async ({ url, compress, branch, includePatterns, ignorePatterns }) => {
       try {
-        // Check if Git is available
+        let useGitMethod = true;
+        let localRepoPath = "";
+
+        // First, try to check if Git is available
         try {
           await execCommand("git", ["--version"]);
         } catch (gitError) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: "❌ Git is not installed or not available in the system PATH. This tool requires Git to be installed to clone and process remote repositories.\n\nFor private repositories, you can:\n1. Download the repository as a ZIP file\n2. Extract it locally\n3. Use the 'pack_codebase' tool to process the local directory\n\nAlternatively, if this is a public repository, you can try accessing it through a different method.",
-              },
-            ],
-            isError: true,
-          };
+          console.log("Git not available, using ZIP download method");
+          useGitMethod = false;
         }
 
         const outputDir = await createToolWorkspace();
         const outputFilePath = path.join(outputDir, "repository-output.xml");
 
-        // Build repomix command
-        const args: string[] = ["--remote", url];
+        if (useGitMethod) {
+          // Use repomix's built-in git clone method
+          const args: string[] = ["--remote", url];
 
-        if (compress) {
-          args.push("--compress");
-        }
+          if (compress) {
+            args.push("--compress");
+          }
 
-        if (branch) {
-          args.push("--remote-branch", branch);
-        }
+          if (branch) {
+            args.push("--remote-branch", branch);
+          }
 
-        if (includePatterns) {
-          args.push("--include", includePatterns);
-        }
+          if (includePatterns) {
+            args.push("--include", includePatterns);
+          }
 
-        if (ignorePatterns) {
-          args.push("--ignore", ignorePatterns);
-        }
+          if (ignorePatterns) {
+            args.push("--ignore", ignorePatterns);
+          }
 
-        args.push("--output", outputFilePath);
+          args.push("--output", outputFilePath);
 
-        // Execute repomix command
-        const result = await execCommand("npx", ["repomix", ...args]);
+          // Execute repomix command
+          const result = await execCommand("npx", ["repomix", ...args]);
 
-        if (result.exitCode !== 0) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Error packing repository: ${
-                  result.stderr || result.stdout
-                }`,
-              },
-            ],
-          };
-        }
+          if (result.exitCode !== 0) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Error packing repository: ${
+                    result.stderr || result.stdout
+                  }`,
+                },
+              ],
+            };
+          }
+        } else {
+          // Use ZIP download method when Git is not available
+          try {
+            localRepoPath = await downloadRepositoryZip(url, branch);
+            
+            // Use repomix on the downloaded directory
+            const args: string[] = [localRepoPath];
 
-        // Parse output to get metrics
-        const packResult: PackResult = {};
-
-        // Try to extract metrics from stdout
-        if (result.stdout) {
-          // Attempt to parse metrics from the output
-          const lines = result.stdout.split("\n");
-          for (const line of lines) {
-            if (line.includes("Total files:")) {
-              const match = line.match(/(\d+)/);
-              if (match) {
-                packResult.metrics = packResult.metrics || {};
-                packResult.metrics.totalFiles = parseInt(match[1]);
-              }
+            if (compress) {
+              args.push("--compress");
             }
+
+            if (includePatterns) {
+              args.push("--include", includePatterns);
+            }
+
+            if (ignorePatterns) {
+              args.push("--ignore", ignorePatterns);
+            }
+
+            args.push("--output", outputFilePath);
+
+            const result = await execCommand("npx", ["repomix", ...args]);
+
+            if (result.exitCode !== 0) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Error packing repository: ${
+                      result.stderr || result.stdout
+                    }`,
+                  },
+                ],
+              };
+            }
+          } catch (downloadError) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `❌ Unable to download repository. Git is not available and ZIP download failed: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}\n\nFor private repositories, you can:\n1. Download the repository as a ZIP file\n2. Extract it locally\n3. Use the 'pack_codebase' tool to process the local directory\n\nNote: ZIP download method only works for public repositories.`,
+                },
+              ],
+              isError: true,
+            };
           }
         }
+
+        // Parse output to get metrics (limited since we don't have access to execution output in all paths)
+        const packResult: PackResult = {};
 
         return await formatToolResponse(
           { repository: url },
