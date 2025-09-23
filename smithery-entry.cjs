@@ -246,7 +246,7 @@ const runRepomixCli = async (args, cwd, options = {}) => {
       } catch {
         // Fallback to npx if local binary not found
         command = "npx";
-        commandArgs = ["repomix@0.3.5", ...cliArgs];
+        commandArgs = ["repomix@latest", ...cliArgs];
       }
     }
 
@@ -346,7 +346,7 @@ const runRepomixCli = async (args, cwd, options = {}) => {
   });
 };
 
-module.exports = function ({ config = {} }) {
+module.exports = async function ({ config = {} }) {
   try {
     // Set GitHub token if provided
     if (config.githubToken) {
