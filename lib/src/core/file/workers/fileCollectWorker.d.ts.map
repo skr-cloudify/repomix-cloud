@@ -1,0 +1,1 @@
+{"version":3,"file":"fileCollectWorker.d.ts","sourceRoot":"","sources":["../../../../../src/core/file/workers/fileCollectWorker.ts"],"names":[],"mappings":"AAIA,MAAM,WAAW,eAAe;IAC9B,QAAQ,EAAE,MAAM,CAAC;IACjB,OAAO,EAAE,MAAM,CAAC;IAChB,WAAW,EAAE,MAAM,CAAC;CACrB;yBAKqB,oCAAoC,eAAe;;;;AAAzE,wBAYE"}

@@ -1,0 +1,29 @@
+import type { RepomixConfigMerged } from '../../config/configSchema.js';
+interface ContentInfo {
+    selection: {
+        isEntireCodebase: boolean;
+        include?: boolean;
+        ignore?: boolean;
+        gitignore?: boolean;
+        defaultIgnore?: boolean;
+    };
+    processing: {
+        commentsRemoved: boolean;
+        emptyLinesRemoved: boolean;
+        securityCheckEnabled: boolean;
+        showLineNumbers: boolean;
+        parsableStyle: boolean;
+        compressed: boolean;
+    };
+    sorting: {
+        gitChanges: boolean;
+    };
+}
+export declare const analyzeContent: (config: RepomixConfigMerged) => ContentInfo;
+export declare const generateHeader: (config: RepomixConfigMerged, generationDate: string) => string;
+export declare const generateSummaryPurpose: () => string;
+export declare const generateSummaryFileFormat: () => string;
+export declare const generateSummaryUsageGuidelines: (config: RepomixConfigMerged, repositoryInstruction: string) => string;
+export declare const generateSummaryNotes: (config: RepomixConfigMerged) => string;
+export {};
+//# sourceMappingURL=outputStyleDecorate.d.ts.map

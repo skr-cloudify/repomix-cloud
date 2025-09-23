@@ -1,0 +1,1 @@
+{"version":3,"file":"fileManipulate.d.ts","sourceRoot":"","sources":["../../../../src/core/file/fileManipulate.ts"],"names":[],"mappings":"AAIA,MAAM,WAAW,eAAe;IAC9B,cAAc,CAAC,OAAO,EAAE,MAAM,GAAG,MAAM,CAAC;IACxC,gBAAgB,CAAC,OAAO,EAAE,MAAM,GAAG,MAAM,CAAC;CAC3C;AA4PD,eAAO,MAAM,kBAAkB,GAC7B,UAAU,MAAM,KACf,eAAe,GAAG,IAGpB,CAAC"}

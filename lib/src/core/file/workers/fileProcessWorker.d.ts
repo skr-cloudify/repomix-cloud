@@ -1,0 +1,9 @@
+import type { RepomixConfigMerged } from '../../../config/configSchema.js';
+import type { ProcessedFile, RawFile } from '../fileTypes.js';
+export interface FileProcessTask {
+    rawFile: RawFile;
+    config: RepomixConfigMerged;
+}
+declare const _default: ({ rawFile, config }: FileProcessTask) => Promise<ProcessedFile>;
+export default _default;
+//# sourceMappingURL=fileProcessWorker.d.ts.map

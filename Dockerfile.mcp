@@ -11,8 +11,8 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Copy the Smithery entry point
-COPY smithery-entry.cjs ./
+# Copy the entry point
+COPY index.js ./
 
 # Command will be provided by smithery.yaml
-CMD ["node", "smithery-entry.cjs"]
+CMD ["node", "index.js"]

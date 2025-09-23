@@ -1,0 +1,1 @@
+{"version":3,"file":"copyToClipboardIfEnabled.d.ts","sourceRoot":"","sources":["../../../../src/core/packager/copyToClipboardIfEnabled.ts"],"names":[],"mappings":"AACA,OAAO,KAAK,EAAE,mBAAmB,EAAE,MAAM,8BAA8B,CAAC;AAExE,OAAO,KAAK,EAAE,uBAAuB,EAAE,MAAM,uBAAuB,CAAC;AAarE,eAAO,MAAM,wBAAwB,GACnC,QAAQ,MAAM,EACd,kBAAkB,uBAAuB,EACzC,QAAQ,mBAAmB,KAC1B,OAAO,CAAC,IAAI,CAiDd,CAAC"}

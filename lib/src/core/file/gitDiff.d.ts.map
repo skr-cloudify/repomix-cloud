@@ -1,0 +1,1 @@
+{"version":3,"file":"gitDiff.d.ts","sourceRoot":"","sources":["../../../../src/core/file/gitDiff.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,mBAAmB,EAAE,MAAM,8BAA8B,CAAC;AAIxE,MAAM,WAAW,aAAa;IAC5B,mBAAmB,EAAE,MAAM,CAAC;IAC5B,iBAAiB,EAAE,MAAM,CAAC;CAC3B;AAED,eAAO,MAAM,WAAW,GACtB,UAAU,MAAM,EAAE,EAClB,QAAQ,mBAAmB,EAC3B;;;;;;;CAGC,KACA,OAAO,CAAC,aAAa,GAAG,SAAS,CA0BnC,CAAC"}
