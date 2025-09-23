@@ -1,0 +1,18 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install git (required for repomix remote repository functionality)
+RUN apk add --no-cache git
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy the entry point
+COPY index.js ./
+
+# Command will be provided by smithery.yaml
+CMD ["node", "index.js"]

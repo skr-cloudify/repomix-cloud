@@ -1,10 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import path from "path";
+import path from "node:path";
 import { z } from "zod";
-import crypto from "crypto";
-import fs from "fs/promises";
-import os from "os";
-import { spawn } from "child_process";
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import { spawn } from "node:child_process";
 
 // Map to store generated output files
 const outputFileRegistry = new Map<string, string>();
@@ -87,13 +87,19 @@ const formatToolResponse = async (
     const topFilesByChar = Object.entries(fileCharCounts)
       .sort(([, a], [, b]) => (b as number) - (a as number))
       .slice(0, topFilesLength)
-      .map(([file, chars]) => `${file}: ${(chars as number).toLocaleString()} chars`);
+      .map(
+        ([file, chars]) =>
+          `${file}: ${(chars as number).toLocaleString()} chars`
+      );
 
     // Get top files by token count
     const topFilesByToken = Object.entries(fileTokenCounts)
       .sort(([, a], [, b]) => (b as number) - (a as number))
       .slice(0, topFilesLength)
-      .map(([file, tokens]) => `${file}: ${(tokens as number).toLocaleString()} tokens`);
+      .map(
+        ([file, tokens]) =>
+          `${file}: ${(tokens as number).toLocaleString()} tokens`
+      );
 
     const contextStr = context.repository
       ? `Repository: ${context.repository}`
@@ -113,8 +119,12 @@ const formatToolResponse = async (
             `- Total files: ${totalFiles.toLocaleString()}\n` +
             `- Total characters: ${totalCharacters.toLocaleString()}\n` +
             `- Total tokens: ${totalTokens.toLocaleString()}\n\n` +
-            `Top ${topFilesLength} files by character count:\n${topFilesByChar.join("\n")}\n\n` +
-            `Top ${topFilesLength} files by token count:\n${topFilesByToken.join("\n")}\n\n` +
+            `Top ${topFilesLength} files by character count:\n${topFilesByChar.join(
+              "\n"
+            )}\n\n` +
+            `Top ${topFilesLength} files by token count:\n${topFilesByToken.join(
+              "\n"
+            )}\n\n` +
             `Use the "read_repomix_output" tool with output ID: ${outputId} to view the packaged content.`,
         },
       ],
@@ -135,7 +145,11 @@ const formatToolResponse = async (
 /**
  * Execute a shell command and return the result
  */
-const execCommand = (command: string, args: string[], cwd?: string): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
+const execCommand = (
+  command: string,
+  args: string[],
+  cwd?: string
+): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd,
@@ -309,22 +323,29 @@ export default function createServer({
     "pack_remote_repository",
     {
       title: "Pack Remote Repository",
-      description: "Package remote git repository into a consolidated file for AI analysis",
+      description:
+        "Package remote git repository into a consolidated file for AI analysis",
       inputSchema: {
         url: z.string().describe("Git repository URL to pack"),
         compress: z
           .boolean()
           .default(true)
-          .describe("Use Tree-sitter to extract essential code signatures while removing implementation details"),
+          .describe(
+            "Use Tree-sitter to extract essential code signatures while removing implementation details"
+          ),
         branch: z.string().optional().describe("Git branch to pack (optional)"),
         includePatterns: z
           .string()
           .optional()
-          .describe("Specify which files to include using fast-glob compatible patterns"),
+          .describe(
+            "Specify which files to include using fast-glob compatible patterns"
+          ),
         ignorePatterns: z
           .string()
           .optional()
-          .describe("Specify additional files to exclude using fast-glob compatible patterns"),
+          .describe(
+            "Specify additional files to exclude using fast-glob compatible patterns"
+          ),
       },
     },
     async ({ url, compress, branch, includePatterns, ignorePatterns }) => {
@@ -361,7 +382,9 @@ export default function createServer({
             content: [
               {
                 type: "text",
-                text: `Error packing repository: ${result.stderr || result.stdout}`,
+                text: `Error packing repository: ${
+                  result.stderr || result.stdout
+                }`,
               },
             ],
           };
@@ -369,13 +392,13 @@ export default function createServer({
 
         // Parse output to get metrics
         const packResult: PackResult = {};
-        
+
         // Try to extract metrics from stdout
         if (result.stdout) {
           // Attempt to parse metrics from the output
-          const lines = result.stdout.split('\n');
+          const lines = result.stdout.split("\n");
           for (const line of lines) {
-            if (line.includes('Total files:')) {
+            if (line.includes("Total files:")) {
               const match = line.match(/(\d+)/);
               if (match) {
                 packResult.metrics = packResult.metrics || {};
@@ -410,28 +433,43 @@ export default function createServer({
     "pack_codebase",
     {
       title: "Pack Local Codebase",
-      description: "Package local code directory into a consolidated file for AI analysis",
+      description:
+        "Package local code directory into a consolidated file for AI analysis",
       inputSchema: {
         directory: z.string().describe("Directory to pack (Absolute path)"),
         compress: z
           .boolean()
           .default(true)
-          .describe("Utilize Tree-sitter to intelligently extract essential code signatures and structure while removing implementation details, significantly reducing token usage (default: true)"),
+          .describe(
+            "Utilize Tree-sitter to intelligently extract essential code signatures and structure while removing implementation details, significantly reducing token usage (default: true)"
+          ),
         includePatterns: z
           .string()
           .optional()
-          .describe('Specify which files to include using fast-glob compatible patterns (e.g., "**/*.js,src/**"). Only files matching these patterns will be processed. It is recommended to pack only necessary files.'),
+          .describe(
+            'Specify which files to include using fast-glob compatible patterns (e.g., "**/*.js,src/**"). Only files matching these patterns will be processed. It is recommended to pack only necessary files.'
+          ),
         ignorePatterns: z
           .string()
           .optional()
-          .describe('Specify additional files to exclude using fast-glob compatible patterns (e.g., "test/**,*.spec.js"). These patterns complement .gitignore and default ignores. It is recommended to pack only necessary files.'),
+          .describe(
+            'Specify additional files to exclude using fast-glob compatible patterns (e.g., "test/**,*.spec.js"). These patterns complement .gitignore and default ignores. It is recommended to pack only necessary files.'
+          ),
         topFilesLength: z
           .number()
           .default(10)
-          .describe("Number of top files to display in the metrics (default: 10)"),
+          .describe(
+            "Number of top files to display in the metrics (default: 10)"
+          ),
       },
     },
-    async ({ directory, compress, includePatterns, ignorePatterns, topFilesLength }) => {
+    async ({
+      directory,
+      compress,
+      includePatterns,
+      ignorePatterns,
+      topFilesLength,
+    }) => {
       try {
         const outputDir = await createToolWorkspace();
         const outputFilePath = path.join(outputDir, "codebase-output.xml");
@@ -461,7 +499,9 @@ export default function createServer({
             content: [
               {
                 type: "text" as const,
-                text: `Error packing codebase: ${result.stderr || result.stdout}`,
+                text: `Error packing codebase: ${
+                  result.stderr || result.stdout
+                }`,
               },
             ],
           };
@@ -469,13 +509,13 @@ export default function createServer({
 
         // Parse output to get metrics
         const packResult: PackResult = {};
-        
+
         // Try to extract metrics from stdout
         if (result.stdout) {
           // Attempt to parse metrics from the output
-          const lines = result.stdout.split('\n');
+          const lines = result.stdout.split("\n");
           for (const line of lines) {
-            if (line.includes('Total files:')) {
+            if (line.includes("Total files:")) {
               const match = line.match(/(\d+)/);
               if (match) {
                 packResult.metrics = packResult.metrics || {};
@@ -510,15 +550,18 @@ export default function createServer({
     "read_repomix_output",
     {
       title: "Read Repomix Output",
-      description: "Read the contents of a previously generated repomix output file",
+      description:
+        "Read the contents of a previously generated repomix output file",
       inputSchema: {
-        outputId: z.string().describe("Output ID from a previous pack operation"),
+        outputId: z
+          .string()
+          .describe("Output ID from a previous pack operation"),
       },
     },
     async ({ outputId }) => {
       try {
         const filePath = getOutputFilePath(outputId);
-        
+
         if (!filePath) {
           return {
             content: [
@@ -531,7 +574,7 @@ export default function createServer({
         }
 
         const content = await fs.readFile(filePath, "utf-8");
-        
+
         return {
           content: [
             {
@@ -567,7 +610,7 @@ export default function createServer({
     async ({ path: filePath }) => {
       try {
         const content = await fs.readFile(filePath, "utf-8");
-        
+
         return {
           content: [
             {
@@ -603,11 +646,13 @@ export default function createServer({
     async ({ path: dirPath }) => {
       try {
         const items = await fs.readdir(dirPath, { withFileTypes: true });
-        const contents = items.map(item => {
-          const type = item.isDirectory() ? "directory" : "file";
-          return `${type}: ${item.name}`;
-        }).join("\n");
-        
+        const contents = items
+          .map((item) => {
+            const type = item.isDirectory() ? "directory" : "file";
+            return `${type}: ${item.name}`;
+          })
+          .join("\n");
+
         return {
           content: [
             {
