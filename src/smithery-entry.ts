@@ -189,8 +189,6 @@ const downloadRepositoryZip = async (
     }
   }
 
-  console.log(`Downloaded ZIP to: ${zipPath}`);
-
   // Use Node.js-based ZIP extraction (no system dependencies required)
   try {
     console.log("Using Node.js yauzl for ZIP extraction");
@@ -260,7 +258,11 @@ const downloadRepositoryZip = async (
             if (repoDir) {
               resolve(path.join(extractPath, repoDir));
             } else {
-              reject(new Error(`Could not find extracted repository directory matching ${repo}-${downloadBranch}`));
+              reject(
+                new Error(
+                  `Could not find extracted repository directory matching ${repo}-${downloadBranch}`
+                )
+              );
             }
           } catch (error) {
             reject(error);
@@ -275,7 +277,11 @@ const downloadRepositoryZip = async (
     return extractedPath;
   } catch (error) {
     console.error("Node.js extraction error:", error);
-    throw new Error(`Failed to extract repository ZIP file: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to extract repository ZIP file: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   }
 };
 
