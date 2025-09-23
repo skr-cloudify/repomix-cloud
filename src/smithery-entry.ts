@@ -818,5 +818,5 @@ export default function createServer({
   );
 
   // Return the MCP server object as required by Smithery
-  return server.server;
+  return server;
 }
