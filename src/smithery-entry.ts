@@ -490,8 +490,11 @@ export default function createServer({
 }: {
   config?: z.infer<typeof configSchema>;
 }) {
-  // Set Smithery mode to disable problematic features like clipboard
-  process.env.SMITHERY_MODE = "true";
+  try {
+    console.log("Creating MCP server...");
+    
+    // Set Smithery mode to disable problematic features like clipboard
+    process.env.SMITHERY_MODE = "true";
 
   // Set environment variables from Smithery config or use scan mode defaults
   if (config) {
@@ -942,5 +945,10 @@ export default function createServer({
   );
 
   // Return the MCP server object as required by Smithery
-  return server;
+  console.log("MCP server created successfully");
+  return server.server;
+  } catch (error) {
+    console.error("Error creating MCP server:", error);
+    throw error;
+  }
 }
