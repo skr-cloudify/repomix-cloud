@@ -94,7 +94,7 @@ jobs:
     - run: npm run test-coverage -- --reporter=verbose
       env:
         CI_OS: ${{ runner.os }}
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       with:
         name: test-coverage
         path: coverage/
@@ -126,7 +126,7 @@ jobs:
     - run: node bin/repomix.cjs --version
     - run: node bin/repomix.cjs --help
     - name: Upload build artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: repomix-output-${{ matrix.os }}-${{ matrix.node-version }}.txt
         path: repomix-output.txt
